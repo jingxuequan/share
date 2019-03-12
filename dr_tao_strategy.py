@@ -59,12 +59,12 @@ def get_list(start_date, end_date):
                         (df["close"].rolling(30).max() > df['fifty']) & \
                         (df["close"].rolling(30).min() < df["day_year"]) & \
                         (df["close"].rolling(5).mean() > df["day_year"]) & \
-                        (df["close"].rolling(30).max() >= df["day_one_hundred_twenty"] * 0.9)
+                        (df["close"].rolling(30).max() / df["day_one_hundred_twenty"].max() > 0.9)
             signals = df[df["buy"]]
 
             if len(signals):
                 rev = True
-                date = max(list(signals.index))
+                date = min(list(signals.index))
             else:
                 rev = False
                 date = ""
@@ -77,19 +77,16 @@ def get_list(start_date, end_date):
             continue
     return pf_list
 
-
-'''
-陶博士月线翻转策略
-月线反转3.0版本的技术指标公式的几个条件是：
-(1)日线收盘价站上年线；
-(2)一月内曾创50日新高；
-(3)50日的RPS大于85；
-(4)收盘价站上年线的天数大于3，小于30；
-(5)最高价距离120日内的最高价不到10%；
-'''
-
-
 def get_strategy(start_date, end_date):
+    """
+    陶博士月线翻转策略
+    月线反转3.0版本的技术指标公式的几个条件是：
+    (1)日线收盘价站上年线；
+    (2)一月内曾创50日新高；
+    (3)50日的RPS大于85；
+    (4)收盘价站上年线的天数大于3，小于30；
+    (5)最高价距离120日内的最高价不到10%；
+    """
     ts.set_token('9303ab9ddece253dc96ac6f4662f22a1d0d92579f1d18368f87aaf65')
     api = ts.pro_api()
     # 取收益最高的15%，计算收益排名的均值
@@ -129,7 +126,9 @@ def get_strategy(start_date, end_date):
                     continue
                 number = float(str(curr['number'].values[0]).replace(",", ""))
                 if (number >= 300000):
-                    print(t_doc['name'], t_doc['rank'], t_doc['date'])
+                    timeDay = datetime.now() - timedelta(days=7)
+                    if (t_doc['date'] >= timeDay.strftime("%Y-%m-%d")):
+                        print(t_doc['name'], t_doc['rank'], t_doc['date'])
             # df = pro.daily_basic(ts_code=get_code(t_doc["code"]), trade_date=(t_doc['date']).replace("-", ""),
             #                      fields='ts_code,trade_date,turnover_rate,volume_ratio,pe,pb')
             # print(df)
@@ -144,4 +143,4 @@ def get_code(code):
 
 if __name__ == "__main__":
     strategy_stocks = get_strategy("2018-01-01", datetime.now().strftime('%Y-%m-%d'))
-    # strategy_stocks = get_strategy("2018-01-01", '2019-03-02')
+    # strategy_stocks = get_strategy("2018-01-01", '2019-03-06')

@@ -236,7 +236,7 @@ def get_sz_shares_number(days, day_interval, ratio):
 
 
 if __name__ == "__main__":
-    days = get_date(60)
-    main(days, "shares/", "华联股份", datetime.now().strftime("%y%m%d"), True)
+    days = get_date(30)
+    main(days, "shares/", "润和软件", datetime.now().strftime("%y%m%d"), True)
     # chart(days,"shares/",'鱼跃医疗 联化科技 华测检测',datetime.now().strftime("%Y%m%d"))
-    # get_sz_shares_number(days, 2, 0.3)
+    get_sz_shares_number(days, 2, 0.2)
