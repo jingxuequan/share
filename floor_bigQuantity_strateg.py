@@ -6,13 +6,11 @@ import pandas as pd
 '''
     底部放量策略
 '''
-
-
 def get_strategy():
     # 10日
     ten = 10
-    # 20日
-    twenty = 20
+    # 最大价格日
+    day_price = 60
     # 120日
     one_hundred_twenty = 120
 
@@ -34,9 +32,17 @@ def get_strategy():
             temp = temp.sort_index(ascending=True)
 
             df = temp.loc[:, ["close", "volume"]]
-            # 20日最大价格
-            df["twenty_price"] = df['close'].rolling(twenty).max()
-            df["twenty_price"] = round(df["twenty_price"], 2)
+            # 最小价格
+            df["min_price"] = df['close'].rolling(day_price).min()
+            df["min_price"] = round(df["min_price"], 2)
+
+            # 平均价格
+            df["average_close"] = df['close'].rolling(day_price).mean()
+            df["average_close"] = round(df["average_close"], 2)
+
+            # 最大价格
+            df["max_price"] = df['close'].rolling(day_price).max()
+            df["max_price"] = round(df["max_price"], 2)
 
             # 10日平均成交量
             df["ten_volume"] = df['volume'].rolling(ten).mean()
@@ -45,7 +51,10 @@ def get_strategy():
             df["ten_volume"] = df['volume'].rolling(ten).mean()
 
             # 当日成交量
-            df["buy"] = (df["close"] < (df["twenty_price"] * 0.55)) & \
+            df["buy"] = (df["max_price"] / df["min_price"] <= 1.20) & \
+                        (df["max_price"] / 1.15 <= df["average_close"]) & \
+                        (df["min_price"] * 1.15 >= df["average_close"]) & \
+                        (df["close"] >= df["close"].shift(1) * 1.05) & \
                         (df['volume'] >= (df["ten_volume"] * 1.5))
 
             # 当日收盘价格收距120日最高价百分比
@@ -56,7 +65,7 @@ def get_strategy():
             if len(signals) > 0:
 
                 # 今天之前30天的策略
-                timeDay = datetime.now() - timedelta(days=10);
+                timeDay = datetime.now() - timedelta(days=3);
                 appointTime = list(signals.index);
                 if max(appointTime) > timeDay.strftime("%Y-%m-%d"):
                     print(code, name['name'], max(list(signals.index)))
@@ -75,5 +84,3 @@ def get_code(code):
 
 if __name__ == "__main__":
     strategy_stocks = get_strategy()
-    strategy_stocks.index = strategy_stocks.pop('date')
-    print("策略选出标的为 \n%s" % strategy_stocks.sort_values(by=['pe'], ascending=[True]))

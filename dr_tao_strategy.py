@@ -77,7 +77,8 @@ def get_list(start_date, end_date):
             continue
     return pf_list
 
-def get_strategy(start_date, end_date):
+
+def get_strategy(start_date, end_date, date):
     """
     陶博士月线翻转策略
     月线反转3.0版本的技术指标公式的几个条件是：
@@ -126,7 +127,7 @@ def get_strategy(start_date, end_date):
                     continue
                 number = float(str(curr['number'].values[0]).replace(",", ""))
                 if (number >= 300000):
-                    timeDay = datetime.now() - timedelta(days=7)
+                    timeDay = datetime.now() - timedelta(days=date)
                     if (t_doc['date'] >= timeDay.strftime("%Y-%m-%d")):
                         print(t_doc['name'], t_doc['rank'], t_doc['date'])
             # df = pro.daily_basic(ts_code=get_code(t_doc["code"]), trade_date=(t_doc['date']).replace("-", ""),
@@ -142,5 +143,5 @@ def get_code(code):
 
 
 if __name__ == "__main__":
-    strategy_stocks = get_strategy("2018-01-01", datetime.now().strftime('%Y-%m-%d'))
+    strategy_stocks = get_strategy("2018-01-01", datetime.now().strftime('%Y-%m-%d'), 3)
     # strategy_stocks = get_strategy("2018-01-01", '2019-03-06')
