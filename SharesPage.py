@@ -2,7 +2,10 @@ import operator
 import re
 import json
 
+import urllib3
+import dr_tao_strategy as dt
 import pandas as pd
+import tushare as ts
 import requests
 from datetime import datetime, time
 from datetime import timedelta
@@ -11,15 +14,11 @@ import os.path
 
 
 def getOnePage(url, d):
-    response = requests.post(url, data=d)
+    urllib3.disable_warnings()
+    response = requests.post(url, data=d, verify=False)
     if response.status_code == 200:
         return response.text
     return None
-
-
-'''
-    获取当天拉取的某条数据
-'''
 
 
 def parseOnePage(html, name):
@@ -91,7 +90,7 @@ def chart(days, dir, name, today):
 def main(days, dir, name, today, all):
     for day in days:
         # 抓取数据的url
-        url = 'http://sc.hkexnews.hk/TuniS/www.hkexnews.hk/sdw/search/mutualmarket_c.aspx?t=sz'
+        url = 'https://sc.hkexnews.hk/TuniS/www.hkexnews.hk/sdw/search/mutualmarket_c.aspx?t=sz'
         # 抓取数据的post 请求参数
         d = {'today': today, 'sortBy': 'stockcode', 'sortDirection': 'asc',
              'btnSearch': '搜寻',
@@ -164,20 +163,14 @@ def get_float(param):
     return round(float(param.replace(",", "")), 2)
 
 
-'''
-获取深交所当日与昨日买入的数量差
-Parameters
-    ------
-      days:string[]
-                  日期列表
-      day_interval:string
-                  打印的日期范围
-      ratio:int
-                  增加的比例大小范围
-'''
-
-
 def get_sz_shares_number(days, day_interval, ratio):
+    '''
+    获取深交所当日与昨日买入的数量差
+    :param days: string[] 日期列表
+    :param day_interval: string 打印的日期范围
+    :param ratio: int   增加的比例大小范围
+    :return:
+    '''
     allData = pd.DataFrame(columns=('code', 'name', 'number', 'ratio', 'day'))
 
     gName = None
@@ -205,7 +198,10 @@ def get_sz_shares_number(days, day_interval, ratio):
             result_df["diff"] = round((result_df['ratio'] - result_df['ratio'].shift(1)), 2)
 
             # 今天与昨天差额 是否大于比例
-            result_df["flag"] = result_df["diff"] >= ratio
+            if ratio > 0:
+                result_df["flag"] = result_df["diff"] >= ratio
+            else:
+                result_df["flag"] = result_df["diff"] <= ratio
 
             # 近5天平均 增加量
             result_df["five_mean"] = round(result_df['diff'].rolling(5).mean(), 2)
@@ -232,11 +228,77 @@ def get_sz_shares_number(days, day_interval, ratio):
             print("%s 出错,错误详情:[%s]" % (index, e))
             continue
 
-    # return allData;
+
+def get_sz_shares_average_incremental(days, day_roll, day_interval, ratio, proportion):
+    '''
+    获取平均增量
+    :param days: 日期列表
+    :param day_roll:    统计多少天数据
+    :param day_interval:  多少天前的数据
+    :param ratio:   平均增量
+    :return:
+    '''
+    allData = pd.DataFrame(columns=('code', 'name', 'number', 'ratio', 'day'))
+
+    gName = None
+
+    for day in days:
+        with open("date/" + day, "r", encoding="utf-8") as nf:
+            # 获取数据 加工后设置到dataframe中
+            data_str = nf.read()
+            j = json.loads(data_str)
+            df = pd.DataFrame(j, columns=['code', 'name', 'number', 'ratio'])
+            df['day'] = day
+            allData = allData.append(df)
+
+    allData.index = allData.pop('code')
+
+    for index, name in allData.iterrows():
+
+        subDf = allData.ix[index]
+        subDf.index = subDf.pop('day')
+
+        try:
+            result_df = subDf.loc[:, ["number", "name", "ratio"]]
+
+            result_df['ratio'] = result_df['ratio'].map(lambda x: float(x[:-1])).astype('float64')
+
+            result_df["diff"] = round((result_df['ratio'] - result_df['ratio'].shift(1)), 3)
+            result_df["diff_ave"] = round(result_df['diff'].rolling(day_roll).mean(), 3)
+
+            # 前20日平均增量 港资持股小于1%
+            result_df["flag"] = (result_df["diff_ave"] > ratio) & \
+                                (result_df['ratio'] < proportion)
+            # 近3天平均 增加量
+            result_df["three_mean"] = round(result_df['diff'].rolling(3).mean(), 3)
+
+            signals = result_df[result_df["flag"]]
+
+            if len(signals) > 0:
+                # 今天之前的数据
+                timeDay = datetime.now() - timedelta(days=day_interval);
+                appointTime = list(signals.index);
+                if (max(appointTime) >= timeDay.strftime("%Y%m%d")):
+                    if not gName:
+                        gName = signals[(signals.index == max(appointTime))]["name"].tolist()
+                    elif operator.eq(gName, signals[(signals.index == max(appointTime))]["name"].tolist()):
+                        return
+
+                    print(" 入选日期:%s" % max(appointTime), \
+                          " 名称:%s" % signals[(signals.index == max(appointTime))]["name"].tolist(), \
+                          " 港资持有比例%s" % signals[(signals.index == max(appointTime))]["ratio"].tolist(), \
+                          " 3日平均增量%s" % signals[(signals.index == max(appointTime))]["three_mean"].tolist(), \
+                          " 当日增量%s" % signals[(signals.index == max(appointTime))]["diff"].tolist(), \
+                          " %s日平均增量 %s" % (day_roll, signals[(signals.index == max(appointTime))]["diff_ave"].tolist()))
+
+        except Exception as e:
+            print("%s 出错,错误详情:[%s]" % (index, e))
+            continue
 
 
 if __name__ == "__main__":
     days = get_date(30)
-    main(days, "shares/", "以岭药业", datetime.now().strftime("%y%m%d"), True)
-    # chart(days,"shares/",'鱼跃医疗 联化科技 华测检测',datetime.now().strftime("%Y%m%d"))
-    get_sz_shares_number(days, 2, 0.3)
+    main(days, "shares/", "沪电股份", datetime.now().strftime("%y%m%d"), True)
+
+    # get_sz_shares_number(days, 4, 0.3)
+    # get_sz_shares_number(days, 2, -0.4)

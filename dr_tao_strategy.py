@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import numpy
 import pandas as pd
 import tushare as ts
 import os.path
@@ -25,7 +26,6 @@ def get_list(start_date, end_date):
     pf_list = []
     cnt = 0
     for code, name in all_stocks.iteritems():
-        print(cnt, code, name)
         try:
             # df = api.daily_basic( ts_code=get_code(code), adj='qfq', start_date=start_date, end_date=end_date)
             df = ts.get_k_data(code, start=start_date, end=end_date, ktype="D", autype="qfq")  # 读日K行情数据
@@ -47,8 +47,8 @@ def get_list(start_date, end_date):
             # 10日线
             df["ten"] = df['close'].rolling(day_ten).mean()
             df["ten"] = round(df["ten"], 2)
-            # 50日线
-            df['fifty'] = round(df['close'].rolling(day_fifty).mean(), 2)
+            # 50日最高
+            df['fifty'] = round(df['close'].rolling(day_fifty).max(), 2)
             # 120日线
             df["day_one_hundred_twenty"] = round(df['close'].rolling(day_one_hundred_twenty).mean(), 2)
             # 年线 250日
@@ -56,10 +56,10 @@ def get_list(start_date, end_date):
 
             # 是否满足反转条件 日线收盘价站上年线； 一月内曾创50日新高；收盘价站上年线的天数大于3，小于30 最高价距离120日内的最高价不到10 %；
             df["buy"] = (df["close"] > df["day_year"]) & \
-                        (df["close"].rolling(30).max() > df['fifty']) & \
+                        (df["close"].rolling(30).max() >= df['fifty']) & \
                         (df["close"].rolling(30).min() < df["day_year"]) & \
-                        (df["close"].rolling(5).mean() > df["day_year"]) & \
-                        (df["close"].rolling(30).max() / df["day_one_hundred_twenty"].max() > 0.9)
+                        (df["close"].rolling(2).mean() > df["day_year"]) & \
+                        (df["close"].rolling(30).max() / df["day_one_hundred_twenty"].max() >= 0.9)
             signals = df[df["buy"]]
 
             if len(signals):
@@ -70,7 +70,6 @@ def get_list(start_date, end_date):
                 date = ""
 
             pf_list.append(dict(code=code, pf=profit, name=name, revs=rev, date=date))
-            print(dict(code=code, pf=profit, name=name, revs=rev, date=date))
             cnt += 1
         except Exception as e:
             print("%s 出错,错误详情:[%s]" % (code, e))
@@ -135,6 +134,20 @@ def get_strategy(start_date, end_date, date):
             # print(df)
 
 
+def get_forecast():
+    # 获取业绩 如果有业绩则 大于等于30最小增长率为筛选条件
+    ts.set_token('9303ab9ddece253dc96ac6f4662f22a1d0d92579f1d18368f87aaf65')
+    pro = ts.pro_api()
+    forecast = pro.forecast(period='20190331')
+    for index, name in forecast.iterrows():
+        if (name['p_change_min'] > 50):
+            print("code: %s " % name['ts_code'], name['end_date'], name['type'], "最小值: %s " % name['p_change_min'],
+                  name['last_parent_net'],
+                  name['summary'], name['change_reason'])
+        else:
+            print(name['ts_code'], name['end_date'], name['type'], name['p_change_min'], name['last_parent_net'],
+                  name['summary'])
+
 def get_code(code):
     if code[2:] == '60':
         return code + '.SH'
@@ -143,5 +156,8 @@ def get_code(code):
 
 
 if __name__ == "__main__":
-    strategy_stocks = get_strategy("2018-01-01", datetime.now().strftime('%Y-%m-%d'), 3)
-    # strategy_stocks = get_strategy("2018-01-01", '2019-03-06')
+    # strategy_stocks = get_strategy("2018-01-01", datetime.now().strftime('%Y-%m-%d'),5)
+    strategy_stocks = get_strategy("2018-01-01", '2019-05-24', 10)
+
+    # 获取业绩预告
+    # get_forecast()
