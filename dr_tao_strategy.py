@@ -38,9 +38,6 @@ def get_list(start_date, end_date):
             if len(df) > 1000:
                 continue
 
-            if ('300824' == code):
-                print()
-
             df.index = df.pop("date")
             if (len(df) < day_ten):
                 continue
