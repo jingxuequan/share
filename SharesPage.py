@@ -3,14 +3,15 @@ import re
 import json
 
 import urllib3
-import dr_tao_strategy as dt
 import pandas as pd
-import tushare as ts
 import requests
 from datetime import datetime, time
 from datetime import timedelta
 import matplotlib.pyplot as plt
 import os.path
+import tushare as ts
+
+import dr_tao_strategy
 
 
 def getOnePage(url, d):
@@ -25,22 +26,30 @@ def parseOnePage(html, name):
     return html.loc[(html['name'] == name)]
 
 
-def get_process_data(webHtml, day):
-    pattern = re.compile(
-        r'<div class="mobile-list-heading">股份代号:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<div class="mobile-list-heading">股份名称:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding">.*?<div class="mobile-list-heading">于中央结算系统的持股量:</div>.*? <div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding-percent">.*?<div class="mobile-list-heading">占于深交所上市及交易的A股总数的百分比:</div>.*?<div class="mobile-list-body">(.*?)</div>'
-        , re.S
-    )
-    details = re.findall(pattern, webHtml)
+def get_process_data(webHtml, sh_html, day):
+    if (len(webHtml) != 0):
+        sz_pattern = re.compile(
+            r'<div class="mobile-list-heading">股份代号:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<div class="mobile-list-heading">股份名称:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding">.*?<div class="mobile-list-heading">于中央结算系统的持股量:</div>.*? <div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding-percent">.*?<div class="mobile-list-heading">占于深交所上市及交易的A股总数的百分比:</div>.*?<div class="mobile-list-body">(.*?)</div>'
+            , re.S
+        )
+        sz_details = re.findall(sz_pattern, webHtml)
+    if (len(sh_html) != 0):
+        sh_pattern = re.compile(
+            r'<div class="mobile-list-heading">股份代号:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<div class="mobile-list-heading">股份名称:</div>.*?<div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding">.*?<div class="mobile-list-heading">于中央结算系统的持股量:</div>.*? <div class="mobile-list-body">(.*?)</div>.*?</td>.*?<td class="col-shareholding-percent">.*?<div class="mobile-list-heading">占于上交所上市及交易的A股总数的百分比:</div>.*?<div class="mobile-list-body">(.*?)</div>'
+            , re.S
+        )
+        sh_details = re.findall(sh_pattern, sh_html)
+        sz_details.extend(sh_details)
 
     # 获取的数据为空
-    if (len(details) == 0):
+    if (len(sz_details) == 0):
         print("日期[%s] 匹配的数据为空!" % day)
-        return details
+        return sz_details
     # 写入文件
     with open("date/" + day, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(details, ensure_ascii=False) + '\n')
+        f.write(json.dumps(sz_details, ensure_ascii=False) + '\n')
 
-    return details;
+    return sz_details;
 
 
 def write_to_file(name, dataFrame, day):
@@ -59,7 +68,7 @@ def write_to_file(name, dataFrame, day):
             f.write(str(dict) + '\n')
 
 
-def chart(days, dir, name, today):
+def chart(dir, name):
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
     # x轴
@@ -67,30 +76,32 @@ def chart(days, dir, name, today):
     # y轴
     y = []
 
-    if (os.path.isfile(dir + name + ".txt")):
-        with open(dir + name + ".txt", "r", encoding="utf-8") as nf:
-            for line in nf.readlines():
-                line_detail = json.loads(line.strip())
-                # 判断当天有没有数据,如果有,则不更新
-                for day in days:
-                    if (line_detail['date'] == day):
-                        x.append(day[4:8])
-                        y.append(int(line_detail['number'].replace(',', '')))
-                        continue
-    num = len(x)
-    plt.figure(figsize=(0.5 * num, 4.8))
-    plt.plot(x, y)
-    plt.plot(x, y, color='red')
-    plt.title('share chart')
-    plt.xlabel("date")
-    plt.ylabel("number")
-    plt.show()
+    with open(dir + name, "r", encoding="utf-8") as sn:
+        list_file = []
+        # 获取数据 加工后设置到dataframe中
+        try:
+            for line in sn.readlines():
+                line = line.strip('\n')
+                # 读取的内容转为字典 目前是str
+                list_file.append(eval(line))
+            json_arr = json.dumps(list_file, ensure_ascii=False)
+            j = json.loads(json_arr)
+            df = pd.DataFrame.from_dict(j)
+            df.index = df.pop('day')
+            df['ratio'] = df['ratio'].map(lambda x: float(x[:-1])).astype('float64')
+            df.plot()
+            plt.show()
+
+        except Exception as e:
+            print("读取文件 %s 出错,错误详情:[%s]" % (sn, e))
 
 
 def main(days, dir, name, today, all):
     for day in days:
-        # 抓取数据的url
+        # 抓取数据的url 深圳
         url = 'https://sc.hkexnews.hk/TuniS/www.hkexnews.hk/sdw/search/mutualmarket_c.aspx?t=sz'
+        # 上海
+        sh_url = 'https://sc.hkexnews.hk/TuniS/www.hkexnews.hk/sdw/search/mutualmarket_c.aspx?t=sh'
         # 抓取数据的post 请求参数
         d = {'today': today, 'sortBy': 'stockcode', 'sortDirection': 'asc',
              'btnSearch': '搜寻',
@@ -102,23 +113,25 @@ def main(days, dir, name, today, all):
         # 判断文件是否存在 网站文件
         if (os.path.isfile("date/" + day)):
             with open("date/" + day, "r", encoding="utf-8") as dt:
-                html_str = dt.read()
+                all_str = dt.read()
         else:
             webHtml = getOnePage(url, d)
+            sh_html = getOnePage(sh_url, d)
             # 获取到的网页进行数据处理,不然数据太多了
             with open("date/" + day, "a", encoding="utf-8") as dt:
-                html_str = get_process_data(webHtml, day)
-
+                html_str = get_process_data(webHtml, sh_html, day)
+                all_str = html_str
         # 判断获取的数据是否为空
-        if (len(html_str) == 0):
+        if (len(all_str) == 0):
             print("获取到的数据为空 当日不再查询[%s]" % day)
+            continue
 
         # 判断文件类型 网页爬取的数据直接就是list 不用转
-        if type(html_str).__name__ == 'list':
-            j = html_str
+        if type(all_str).__name__ == 'list':
+            j = all_str
         else:
             # 把获取到的string 转为 json 再转 dataframe
-            j = json.loads(html_str)
+            j = json.loads(all_str)
 
         html = pd.DataFrame(j, columns=['code', 'name', 'number', 'ratio'])
         html.index = html.pop('code')
@@ -131,29 +144,46 @@ def main(days, dir, name, today, all):
 
         # 查询文件内容返回字典
         if all:
+            items = parseOnePage(html, name)
+            # 写入文件
+            write_to_file('shares/' + name, items, day)
+        else:
             for root, dirs, files in os.walk(dir):
                 for subName in files:
                     items = parseOnePage(html, subName)
                     write_to_file('shares/' + subName, items, day)
-        else:
-            items = parseOnePage(html, name)
-            # 写入文件
-            write_to_file('shares/' + name, items, day)
 
 
 # 获取日期
-def get_date(day):
-    days = []
-    while day > 0:
-        timeDay = datetime.now() - timedelta(days=day);
+def get_date(day, now):
+    api = dr_tao_strategy.get_tushare_api()
+    if now:
+        timeDay = datetime.now().strftime("%Y%m%d")
+    else:
+        timeDay = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
 
-        # 去除周末信息 0-6是星期一到星期日
-        dayOfWeek = timeDay.weekday()
-        if (5 != dayOfWeek and 6 != dayOfWeek):
-            otherStyleTime = timeDay.strftime("%Y%m%d")
-            days.append(otherStyleTime)
-        day = day - 1
-    return days
+    df = api.query('trade_cal', start_date='20200101', end_date=timeDay, is_open=1)
+    date_list = df['cal_date'].sort_values(ascending=False).values.tolist()
+
+    return date_list[:day]
+
+
+def opendate(n, date12):
+    cal_dates = ts.trade_cal()
+    stocklist = []
+    for i in cal_dates.index:
+        str_date = cal_dates.loc[i]['calendarDate']
+        isOpen = cal_dates.loc[i]['isOpen']
+        if not isOpen:
+            continue
+        date = datetime.datetime.strptime(str_date, '%Y-%m-%d').date()  # 获取格式为2019-02-22
+        date1 = date.strftime("%Y%m%d")  # 处理日期格式为20190222
+        stocklist.append(date1)
+
+    start = int(stocklist.index(date12) - n + 1)  # 往前倒推n天
+    end = int(stocklist.index(date12) + 1)  # 结束日期
+    opendate = stocklist[start:end]
+    return opendate
 
 
 def get_float(param):
@@ -171,11 +201,13 @@ def get_sz_shares_number(days, day_interval, ratio):
     :param ratio: int   增加的比例大小范围
     :return:
     '''
+    print(" ---获取港仔买入数量大于 %d%% 数据" % (ratio * 100))
     allData = pd.DataFrame(columns=('code', 'name', 'number', 'ratio', 'day'))
 
     gName = None
 
-    for day in days:
+    days.sort()
+    for day in days[-2:]:
         with open("date/" + day, "r", encoding="utf-8") as nf:
             # 获取数据 加工后设置到dataframe中
             data_str = nf.read()
@@ -188,7 +220,7 @@ def get_sz_shares_number(days, day_interval, ratio):
 
     for index, name in allData.iterrows():
 
-        subDf = allData.ix[index]
+        subDf = allData.loc[index]
         subDf.index = subDf.pop('day')
         try:
             result_df = subDf.loc[:, ["number", "name", "ratio"]]
@@ -202,9 +234,6 @@ def get_sz_shares_number(days, day_interval, ratio):
                 result_df["flag"] = result_df["diff"] >= ratio
             else:
                 result_df["flag"] = result_df["diff"] <= ratio
-
-            # 近5天平均 增加量
-            result_df["five_mean"] = round(result_df['diff'].rolling(5).mean(), 2)
 
             signals = result_df[result_df["flag"]]
 
@@ -221,7 +250,7 @@ def get_sz_shares_number(days, day_interval, ratio):
                     print(" 入选日期:%s" % max(appointTime), \
                           " 名称:%s" % signals[(signals.index == max(appointTime))]["name"].tolist(), \
                           " 港资持有比例%s" % signals[(signals.index == max(appointTime))]["ratio"].tolist(), \
-                          " 5日平均增量%s" % signals[(signals.index == max(appointTime))]["five_mean"].tolist(), \
+                          " 上一日持有比例%s" % result_df[result_df.index == days[-2]]["ratio"].tolist(), \
                           " 当日增量%s" % signals[(signals.index == max(appointTime))]["diff"].tolist())
 
         except Exception as e:
@@ -296,9 +325,55 @@ def get_sz_shares_average_incremental(days, day_roll, day_interval, ratio, propo
             continue
 
 
-if __name__ == "__main__":
-    days = get_date(30)
-    main(days, "shares/", "沪电股份", datetime.now().strftime("%y%m%d"), True)
+def get_pre_incremental(dir, day):
+    '''
+     获取目录下文件上一日增量
+    :param dir: 目录
+    :param day: 日期平均增量
+    :return:
+    '''
+    plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
+    plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 
-    # get_sz_shares_number(days, 4, 0.3)
-    # get_sz_shares_number(days, 2, -0.4)
+    for root, dirs, files in os.walk(dir):
+        for subName in files:
+            with open(dir + subName, "r", encoding="utf-8") as sn:
+                if (subName.find('DS_Store') > 0):
+                    continue
+                list_file = []
+                # 获取数据 加工后设置到dataframe中
+                try:
+                    for line in sn.readlines():
+                        line = line.strip('\n')
+                        # 读取的内容转为字典 目前是str
+                        list_file.append(eval(line))
+                    json_arr = json.dumps(list_file, ensure_ascii=False)
+                    j = json.loads(json_arr)
+                    df = pd.DataFrame.from_dict(j)
+                    df.index = df.pop('day')
+                    df['ratio'] = df['ratio'].map(lambda x: float(x[:-1])).astype('float64')
+                    df["diff"] = round((df['ratio'] - df['ratio'].shift(1)), 2)
+                    # 近5天平均 增加量
+                    df["five_mean"] = round(df['diff'].rolling(day).mean(), 3)
+                    df.sort_index(ascending=True)
+                    # 获取最大索引
+                    print("日期: %s " % df[-1:].index.tolist(),
+                          "名称: %s " % df[-1:]['name'].tolist(),
+                          "港资持有数量: %s " % df[-1:]['number'].tolist(),
+                          "港资持有比例: %s " % df[-1:]['ratio'].tolist(),
+                          "较前一日增量: %s " % (df[-1:]['diff'].tolist()),
+                          "%s日平均增量: %s " % (day, df[-1:]['five_mean'].tolist()))
+                except Exception as e:
+                    print("读取文件 %s 出错,错误详情:[%s]" % (sn, e))
+
+
+if __name__ == "__main__":
+    days = get_date(20, False)
+    name = "亚光科技"
+    # 如果重新生成文件则设置为True 并且对时间进行排序,每日增量拉取设置为False
+    # days.sort()
+    main(days, "shares/", name, datetime.now().strftime("%y%m%d"), False)
+    get_pre_incremental("shares/", 5)
+
+    chart("shares/", name)
+    get_sz_shares_number(days, 5, 0.3)

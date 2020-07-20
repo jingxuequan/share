@@ -36,4 +36,6 @@ def fourHigh():
 
 
 if __name__ == '__main__':
-    fourHigh()
+    # fourHigh()
+    df = ts.get_k_data('300824', start="2019-05-01", end="2020-07-16", ktype="D", autype="qfq")  # 读日K行情数据
+    print(df)
