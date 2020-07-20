@@ -141,16 +141,16 @@ def get_strategy(start_date, end_date, date):
             if (datetime.strptime(appear_date, '%Y%m%d') < datetime.strptime(str_date, '%Y%m%d')):
                 continue
             name = t_doc['name']
-            # number = get_hk_number(str_date,name)
-            # if (number >= 100):
-            timeDay = datetime.now() - timedelta(days=date)
-            if (t_doc['date'] >= timeDay.strftime("%Y-%m-%d")):
-                # 获取当日涨幅
-                day_format = t_doc['date'].replace("-", "")
-                day_detail = api.daily(ts_code=get_code(t_doc['code']), start_date=day_format,
-                                       end_date=day_format)
-                print(t_doc['code'], t_doc['name'], t_doc['rank'], t_doc['date'], t_doc['industry'],
-                      "当日涨幅: %s " % day_detail['pct_chg'].tolist())
+            number = get_hk_number(appear_date, name)
+            if (number >= 10000):
+                timeDay = datetime.now() - timedelta(days=date)
+                if (t_doc['date'] >= timeDay.strftime("%Y-%m-%d")):
+                    # 获取当日涨幅
+                    day_format = t_doc['date'].replace("-", "")
+                    day_detail = api.daily(ts_code=get_code(t_doc['code']), start_date=day_format,
+                                           end_date=day_format)
+                    print(t_doc['code'], t_doc['name'], t_doc['rank'], t_doc['date'], t_doc['industry'],
+                          "当日涨幅: %s " % day_detail['pct_chg'].tolist())
 
 
 def get_hk_number(date, name):
@@ -160,7 +160,7 @@ def get_hk_number(date, name):
         df = pd.DataFrame(j, columns=['code', 'name', 'number', 'ratio'])
         curr = (df.loc[df['name'] == name])
         if len(curr) == 0:
-            return
+            return 0
         return float(str(curr['number'].values[0]).replace(",", ""))
 
 
@@ -197,7 +197,7 @@ def get_code(code):
 
 if __name__ == "__main__":
     # 获取上个日期开始近5天的反转池
-    get_strategy("2019-05-01", SharesPage.get_date(1, False), 3)
+    get_strategy("2019-05-01", SharesPage.get_date(1, False), 50)
 
     # 获取业绩预告
     # get_forecast('20190331',50)
