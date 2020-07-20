@@ -83,11 +83,16 @@ def get_list(start_date, end_date):
             if len(signals):
                 rev = True
                 date = min(list(signals.index))
+                # 反转日到现在的收益率
+                rev_profit = round(float((df["close"][-1] / df.at[date, 'close'] - 1.0) * 100), 2)
             else:
                 rev = False
                 date = ""
+                # 反转日到现在的收益率
+                rev_profit = 0.0
 
-            pf_list.append(dict(code=code, pf=profit, name=row['name'], industry=row['industry'], revs=rev, date=date))
+            pf_list.append(dict(code=code, pf=profit, name=row['name'], industry=row['industry'], revs=rev, date=date,
+                                rev_profit=rev_profit))
             cnt += 1
         except Exception as e:
             print("%s 出错,错误详情:[%s]" % (code, e))
@@ -150,7 +155,7 @@ def get_strategy(start_date, end_date, date):
                     day_detail = api.daily(ts_code=get_code(t_doc['code']), start_date=day_format,
                                            end_date=day_format)
                     print(t_doc['code'], t_doc['name'], t_doc['rank'], t_doc['date'], t_doc['industry'],
-                          "当日涨幅: %s " % day_detail['pct_chg'].tolist())
+                          "当日涨幅: %s " % day_detail['pct_chg'].tolist(), "反转日距今涨幅: %s " % t_doc['rev_profit'])
 
 
 def get_hk_number(date, name):
